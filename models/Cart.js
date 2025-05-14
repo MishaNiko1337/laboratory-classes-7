@@ -1,56 +1,67 @@
+const { getDatabase } = require("../database");
 const Product = require("./Product");
+
+const COLLECTION_NAME = "carts";
 
 class Cart {
   constructor() {}
 
-  static #items = [];
+  static async add(productName) {
+    const db = getDatabase();
+    const product = await Product.findByName(productName);
 
-  static add(productName) {
-    const product = Product.findByName(productName);
+  if (!product) {
+  console.warn(`Product '${productName}' not found. Skipping add to cart.`);
+  return;
+  }
 
-    if (!product) {
-      throw new error(`Product '${productName}' not found.`);
-    }
 
-    if (!this.#items.length) {
-      this.#items.push({ product, quantity: 1 });
+    const cart = await db.collection(COLLECTION_NAME).findOne({});
 
+    if (!cart) {
+      await db.collection(COLLECTION_NAME).insertOne({
+        items: [{ product, quantity: 1 }],
+      });
       return;
     }
 
-    const existingProduct = this.#items.find(
+    const existingItem = cart.items.find(
       (item) => item.product.name === productName
     );
 
-    if (existingProduct) {
-      existingProduct.quantity += 1;
+    if (existingItem) {
+      existingItem.quantity += 1;
     } else {
-      this.#items.push({ product, quantity: 1 });
-    }
-  }
-
-  static getItems() {
-    return this.#items;
-  }
-
-  static getProductsQuantity() {
-    if (!this.#items?.length) {
-      return 0;
+      cart.items.push({ product, quantity: 1 });
     }
 
-    return this.#items.reduce((total, item) => {
-      return total + item.quantity;
-    }, 0);
+    await db
+      .collection(COLLECTION_NAME)
+      .updateOne({}, { $set: { items: cart.items } });
   }
 
-  static getTotalPrice() {
-    return this.#items.reduce((total, item) => {
-      return total + item.product.price * item.quantity;
-    }, 0);
+  static async getItems() {
+    const db = getDatabase();
+    const cart = await db.collection(COLLECTION_NAME).findOne({});
+    return cart?.items || [];
   }
 
-  static clearCart() {
-    this.#items = [];
+  static async getProductsQuantity() {
+    const items = await this.getItems();
+    return items.reduce((total, item) => total + item.quantity, 0);
+  }
+
+  static async getTotalPrice() {
+    const items = await this.getItems();
+    return items.reduce(
+      (total, item) => total + item.product.price * item.quantity,
+      0
+    );
+  }
+
+  static async clearCart() {
+    const db = getDatabase();
+    await db.collection(COLLECTION_NAME).updateOne({}, { $set: { items: [] } });
   }
 }
 
